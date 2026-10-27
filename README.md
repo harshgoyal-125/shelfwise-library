@@ -76,3 +76,7 @@ Covers login, operator-injection blocking, role permissions, borrow/renew/return
 ## Security notes
 
 bcrypt password hashes, JWT with 8h expiry, helmet headers, login rate limiting, request body checks that reject `$`/dotted keys, input validation on every write, role checks on every protected route. No pen test or formal audit was done.
+
+## Deployment note: demo passwords
+
+On 2026-10-27 the four demo role passwords (admin, librarian, faculty, student) on the live deployment were changed directly in the database to values chosen by the owner, stored in the owner's password vault. The `SEED_*_PASSWORD` environment values no longer match them. Changing `SEED_VERSION` wipes and re-seeds the data and would overwrite those passwords with the `SEED_*` values, so do not bump it on the live site unless you intend to reset them.
