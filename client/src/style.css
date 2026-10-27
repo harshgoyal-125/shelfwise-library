@@ -95,6 +95,8 @@ tr.dim{opacity:.55}
   td.actions .btn{margin:2px 0 2px 4px}
   .books-table th:nth-child(2),.books-table td:nth-child(2){display:none}
   .only-mobile{display:inline}
+  .members-table th:nth-child(2),.members-table td:nth-child(2){display:none}
+  .small-text{word-break:break-word}
   .top{padding:10px 12px;gap:8px}
   .who{width:100%;justify-content:space-between}
   .tabs{order:3;flex:none;width:100%;flex-wrap:wrap;gap:4px}

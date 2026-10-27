@@ -16,12 +16,12 @@ export default function Members() {
       <h2>Members</h2>
       {err && <div className="error">{err}</div>}
       <div className="table-wrap card">
-        <table>
+        <table className="members-table">
           <thead><tr><th>Member</th><th>Type</th><th>Borrowed</th><th></th></tr></thead>
           <tbody>
             {m.map((x) => (
               <tr key={x.id} className={x.active ? '' : 'dim'}>
-                <td><b>{x.name}</b><div className="muted small-text">{x.memberId} · {x.email}</div></td>
+                <td><b>{x.name}</b><div className="muted small-text">{x.memberId} · {x.email}<span className="only-mobile"> · {ROLE_LABEL[x.role]}</span></div></td>
                 <td><span className={'badge role-' + x.role}>{ROLE_LABEL[x.role]}</span></td>
                 <td>{x.activeLoans}</td>
                 <td className="actions"><button className="btn small" onClick={() => toggle(x)}>{x.active ? 'Deactivate' : 'Activate'}</button></td>
