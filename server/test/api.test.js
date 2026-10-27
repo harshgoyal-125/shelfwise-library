@@ -55,7 +55,7 @@ test('borrow, limits, renew, return', async () => {
   // diya has an overdue seeded loan, so borrowing is blocked
   assert.equal((await call('POST', '/loans', { bookId: books[0]._id }, st)).status, 400);
   const kab = await login('kabir@shelfwise.demo', 'MemberPass#1');
-  const b = books.find((x) => x.title === 'Zero to One');
+  const b = books.find((x) => x.title === 'Digital Design');
   const l = await call('POST', '/loans', { bookId: b._id }, kab);
   assert.equal(l.status, 201);
   assert.equal((await call('POST', '/loans', { bookId: b._id }, kab)).status, 400); // duplicate
@@ -124,4 +124,18 @@ test('reservation queue: reserve when out, hold copies, FIFO position, cancel', 
   assert.equal((await call('GET', '/reservations', null, adm)).status, 200);
   assert.equal((await call('DELETE', '/reservations/' + r2.body._id, null, rohan)).status, 403);
   assert.equal((await call('DELETE', '/reservations/' + r2.body._id, null, meera)).status, 200);
+});
+
+test('archived books are hidden from the catalog, cannot be borrowed, but history still resolves', async () => {
+  const adm = await login('admin@shelfwise.demo', 'StaffPass#1');
+  const mem = await login('meera@shelfwise.demo', 'MemberPass#1');
+  const all = (await call('GET', '/books?limit=48', null, adm)).body.items;
+  const b = all.find((x) => x.title === 'Structural Analysis');
+  assert.equal((await call('PUT', '/books/' + b._id, { archived: true }, adm)).status, 200);
+  const after = (await call('GET', '/books?limit=48', null, adm)).body;
+  assert.equal(after.items.some((x) => x._id === b._id), false);
+  assert.equal((await call('GET', '/books/' + b._id, null, adm)).status, 200);
+  assert.equal((await call('POST', '/loans', { bookId: b._id }, mem)).status, 409);
+  assert.equal((await call('POST', '/reservations', { bookId: b._id }, mem)).status, 409);
+  assert.equal((await call('PUT', '/books/' + b._id, { archived: false }, adm)).status, 200);
 });

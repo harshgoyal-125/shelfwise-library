@@ -21,6 +21,7 @@ const bookSchema = new Schema({
   shelf: { type: String, trim: true, maxlength: 20 },
   totalCopies: { type: Number, required: true, min: 1, max: 500 },
   availableCopies: { type: Number, required: true, min: 0 },
+  archived: { type: Boolean, default: false },
 }, { timestamps: true });
 bookSchema.index({ title: 'text', author: 'text', category: 'text' });
 

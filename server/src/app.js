@@ -91,7 +91,7 @@ function createApp({ jwtSecret, clientDir } = {}) {
     const available = req.query.available === 'true';
     const page = Math.max(1, parseInt(req.query.page) || 1);
     const limit = Math.min(48, Math.max(1, parseInt(req.query.limit) || 12));
-    const filter = {};
+    const filter = { archived: { $ne: true } };
     if (q) {
       const rx = new RegExp(q.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'i');
       filter.$or = [{ title: rx }, { author: rx }, { category: rx }, { isbn: rx }];
@@ -111,7 +111,7 @@ function createApp({ jwtSecret, clientDir } = {}) {
       total, page, pages: Math.max(1, Math.ceil(total / limit)),
     });
   }));
-  api.get('/books/categories', auth, wrap(async (req, res) => res.json(await Book.distinct('category').then((c) => c.sort()))));
+  api.get('/books/categories', auth, wrap(async (req, res) => res.json(await Book.distinct('category', { archived: { $ne: true } }).then((c) => c.sort()))));
   api.get('/books/:id', auth, wrap(async (req, res) => {
     if (!validId(req.params.id)) return bad(res, 'Book not found', 404);
     const book = await Book.findById(req.params.id);
@@ -144,6 +144,7 @@ function createApp({ jwtSecret, clientDir } = {}) {
     if (!validId(req.params.id)) return bad(res, 'Book not found', 404);
     const book = await Book.findById(req.params.id);
     if (!book) return bad(res, 'Book not found', 404);
+    if (typeof req.body.archived === 'boolean') book.archived = req.body.archived;
     const b = bookFields({ ...book.toObject(), ...req.body });
     const err = checkBook(b);
     if (err) return bad(res, err);
@@ -166,6 +167,8 @@ function createApp({ jwtSecret, clientDir } = {}) {
   async function issue(bookId, member) {
     const pol = cfg.POLICY[member.role];
     if (!pol) return { error: 'Staff accounts cannot borrow books' };
+    const target = await Book.findById(bookId).select('archived');
+    if (target && target.archived) return { error: 'This book is no longer in the catalog', code: 409 };
     const active = await Loan.find({ member: member._id, returnedAt: null });
     if (active.length >= pol.maxLoans) return { error: `Limit reached: ${member.role}s can borrow at most ${pol.maxLoans} books at a time` };
     if (active.some((l) => String(l.book) === String(bookId))) return { error: 'This member already has this book' };
@@ -174,6 +177,7 @@ function createApp({ jwtSecret, clientDir } = {}) {
     const waitingOthers = await Reservation.countDocuments({ book: bookId, status: 'waiting', member: { $ne: member._id } });
     const current = await Book.findById(bookId);
     if (!current) return { error: 'Book not found', code: 404 };
+    if (current.archived) return { error: 'This book is no longer in the catalog', code: 409 };
     if (current.availableCopies - waitingOthers < 1) {
       return { error: current.availableCopies > 0 ? 'The available copies are held for members in the reservation queue' : 'No copies available right now. You can reserve it instead.', code: 409 };
     }
@@ -256,6 +260,7 @@ function createApp({ jwtSecret, clientDir } = {}) {
     if (!cfg.POLICY[member.role]) return bad(res, 'Staff accounts cannot reserve books');
     const book = await Book.findById(bookId);
     if (!book) return bad(res, 'Book not found', 404);
+    if (book.archived) return bad(res, 'This book is no longer in the catalog', 409);
     if (await Loan.exists({ book: bookId, member: member._id, returnedAt: null })) return bad(res, 'You already have this book', 409);
     if (await Reservation.exists({ book: bookId, member: member._id, status: 'waiting' })) return bad(res, 'Already in the queue for this book', 409);
     const waiting = await Reservation.countDocuments({ book: bookId, status: 'waiting' });
@@ -315,12 +320,12 @@ function createApp({ jwtSecret, clientDir } = {}) {
   api.get('/stats', auth, staff, wrap(async (req, res) => {
     const now = new Date();
     const [titles, copies, members, activeLoans, overdue, perCat, recent, reservations] = await Promise.all([
-      Book.countDocuments(),
-      Book.aggregate([{ $group: { _id: null, total: { $sum: '$totalCopies' }, avail: { $sum: '$availableCopies' } } }]),
+      Book.countDocuments({ archived: { $ne: true } }),
+      Book.aggregate([{ $match: { archived: { $ne: true } } }, { $group: { _id: null, total: { $sum: '$totalCopies' }, avail: { $sum: '$availableCopies' } } }]),
       User.countDocuments({ role: { $in: ['student', 'faculty'] }, active: true }),
       Loan.countDocuments({ returnedAt: null }),
       Loan.countDocuments({ returnedAt: null, dueAt: { $lt: now } }),
-      Book.aggregate([{ $group: { _id: '$category', titles: { $sum: 1 }, copies: { $sum: '$totalCopies' } } }, { $sort: { copies: -1 } }]),
+      Book.aggregate([{ $match: { archived: { $ne: true } } }, { $group: { _id: '$category', titles: { $sum: 1 }, copies: { $sum: '$totalCopies' } } }, { $sort: { copies: -1 } }]),
       Loan.find().populate('book', 'title').populate('member', 'name').sort({ createdAt: -1 }).limit(6),
       Reservation.countDocuments({ status: 'waiting' }),
     ]);
