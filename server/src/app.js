@@ -8,7 +8,7 @@ const rateLimit = require('express-rate-limit');
 const bcrypt = require('bcryptjs');
 const jwt = require('jsonwebtoken');
 const mongoose = require('mongoose');
-const { User, Book, Loan, Reservation } = require('./models');
+const { User, Book, Loan, Reservation, Request } = require('./models');
 const cfg = require('./config');
 
 const wrap = (fn) => (req, res, next) => Promise.resolve(fn(req, res, next)).catch(next);
@@ -106,8 +106,10 @@ function createApp({ jwtSecret, clientDir } = {}) {
     const wm = Object.fromEntries(waits.map((w) => [String(w._id), w.n]));
     const mine = await Reservation.find({ member: req.user._id, status: 'waiting', book: { $in: items.map((b) => b._id) } }).select('book');
     const mset = new Set(mine.map((r) => String(r.book)));
+    const myReqs = await Request.find({ member: req.user._id, status: 'pending', book: { $in: items.map((b) => b._id) } }).select('book');
+    const qset = new Set(myReqs.map((r) => String(r.book)));
     res.json({
-      items: items.map((b) => ({ ...b.toObject(), waiting: wm[String(b._id)] || 0, reservedByMe: mset.has(String(b._id)) })),
+      items: items.map((b) => ({ ...b.toObject(), waiting: wm[String(b._id)] || 0, reservedByMe: mset.has(String(b._id)), requestedByMe: qset.has(String(b._id)) })),
       total, page, pages: Math.max(1, Math.ceil(total / limit)),
     });
   }));
@@ -287,6 +289,78 @@ function createApp({ jwtSecret, clientDir } = {}) {
     res.json({ ok: true });
   }));
 
+  // ---- Borrow requests (students request; librarian/admin approves or rejects)
+  const popRequest = (q) => q.populate('book', 'title author availableCopies').populate('member', 'name memberId email');
+  api.post('/requests', auth, wrap(async (req, res) => {
+    if (isStaff(req.user)) return bad(res, 'Staff can issue books directly from the catalog');
+    if (req.user.role !== 'student') return bad(res, 'Faculty can borrow directly; only students need to request');
+    const bookId = str(req.body.bookId);
+    if (!validId(bookId)) return bad(res, 'Book not found', 404);
+    const book = await Book.findById(bookId);
+    if (!book) return bad(res, 'Book not found', 404);
+    if (book.archived) return bad(res, 'This book is no longer in the catalog', 409);
+    const pol = cfg.POLICY.student;
+    const active = await Loan.find({ member: req.user._id, returnedAt: null });
+    if (active.some((l) => String(l.book) === String(bookId))) return bad(res, 'You already have this book', 409);
+    if (active.some((l) => l.dueAt < new Date())) return bad(res, 'Return overdue books before requesting more');
+    const pending = await Request.find({ member: req.user._id, status: 'pending' });
+    if (pending.some((r) => String(r.book) === String(bookId))) return bad(res, 'You already have a pending request for this book', 409);
+    if (active.length + pending.length >= pol.maxLoans) return bad(res, `Limit reached: students can have at most ${pol.maxLoans} active loans and pending requests at a time`);
+    // copies held for the reservation queue stay held; requests only make sense when a copy could be issued
+    const waitingOthers = await Reservation.countDocuments({ book: bookId, status: 'waiting', member: { $ne: req.user._id } });
+    if (book.availableCopies - waitingOthers < 1) {
+      return bad(res, book.availableCopies > 0 ? 'The available copies are held for members in the reservation queue' : 'No copies available right now. You can reserve it instead.', 409);
+    }
+    const r = await Request.create({ book: bookId, member: req.user._id });
+    res.status(201).json(await popRequest(Request.findById(r._id)));
+  }));
+  api.get('/requests/mine', auth, wrap(async (req, res) => {
+    res.json(await popRequest(Request.find({ member: req.user._id }).sort({ createdAt: -1 }).limit(50)));
+  }));
+  api.get('/requests', auth, staff, wrap(async (req, res) => {
+    const status = str(req.query.status) || 'pending';
+    const filter = status === 'all' ? {} : { status };
+    res.json(await popRequest(Request.find(filter).sort({ createdAt: status === 'pending' ? 1 : -1 }).limit(200)));
+  }));
+  api.post('/requests/:id/approve', auth, staff, wrap(async (req, res) => {
+    if (!validId(req.params.id)) return bad(res, 'Request not found', 404);
+    const r = await Request.findById(req.params.id);
+    if (!r) return bad(res, 'Request not found', 404);
+    if (r.status !== 'pending') return bad(res, 'This request was already ' + r.status, 409);
+    const member = await User.findById(r.member);
+    if (!member || !member.active) return bad(res, 'Member account is no longer active', 409);
+    const out = await issue(r.book, member);
+    if (out.error) return bad(res, out.error, out.code || 400);
+    r.status = 'approved';
+    r.decidedBy = req.user._id;
+    r.decidedAt = new Date();
+    r.loan = out.loan._id;
+    await r.save();
+    res.json(loanView(out.loan));
+  }));
+  api.post('/requests/:id/reject', auth, staff, wrap(async (req, res) => {
+    if (!validId(req.params.id)) return bad(res, 'Request not found', 404);
+    const r = await Request.findById(req.params.id);
+    if (!r) return bad(res, 'Request not found', 404);
+    if (r.status !== 'pending') return bad(res, 'This request was already ' + r.status, 409);
+    r.status = 'rejected';
+    r.decidedBy = req.user._id;
+    r.decidedAt = new Date();
+    await r.save();
+    res.json(await popRequest(Request.findById(r._id)));
+  }));
+  api.post('/requests/:id/cancel', auth, wrap(async (req, res) => {
+    if (!validId(req.params.id)) return bad(res, 'Request not found', 404);
+    const r = await Request.findById(req.params.id);
+    if (!r) return bad(res, 'Request not found', 404);
+    if (!isStaff(req.user) && String(r.member) !== String(req.user._id)) return bad(res, 'Not your request', 403);
+    if (r.status !== 'pending') return bad(res, 'This request was already ' + r.status, 409);
+    r.status = 'cancelled';
+    r.decidedAt = new Date();
+    await r.save();
+    res.json({ ok: true });
+  }));
+
   // ---- Members (admin)
   api.get('/members', auth, staff, wrap(async (req, res) => {
     const members = await User.find({ role: { $in: ['student', 'faculty'] } }).sort({ name: 1 });
@@ -319,7 +393,7 @@ function createApp({ jwtSecret, clientDir } = {}) {
 
   api.get('/stats', auth, staff, wrap(async (req, res) => {
     const now = new Date();
-    const [titles, copies, members, activeLoans, overdue, perCat, recent, reservations] = await Promise.all([
+    const [titles, copies, members, activeLoans, overdue, perCat, recent, reservations, pendingRequests] = await Promise.all([
       Book.countDocuments({ archived: { $ne: true } }),
       Book.aggregate([{ $match: { archived: { $ne: true } } }, { $group: { _id: null, total: { $sum: '$totalCopies' }, avail: { $sum: '$availableCopies' } } }]),
       User.countDocuments({ role: { $in: ['student', 'faculty'] }, active: true }),
@@ -328,9 +402,10 @@ function createApp({ jwtSecret, clientDir } = {}) {
       Book.aggregate([{ $match: { archived: { $ne: true } } }, { $group: { _id: '$category', titles: { $sum: 1 }, copies: { $sum: '$totalCopies' } } }, { $sort: { copies: -1 } }]),
       Loan.find().populate('book', 'title').populate('member', 'name').sort({ createdAt: -1 }).limit(6),
       Reservation.countDocuments({ status: 'waiting' }),
+      Request.countDocuments({ status: 'pending' }),
     ]);
     res.json({
-      titles, reservations, copies: copies[0]?.total || 0, available: copies[0]?.avail || 0, members, activeLoans, overdue,
+      titles, reservations, pendingRequests, copies: copies[0]?.total || 0, available: copies[0]?.avail || 0, members, activeLoans, overdue,
       categories: perCat.map((c) => ({ category: c._id, titles: c.titles, copies: c.copies })),
       recent: recent.map(loanView),
     });

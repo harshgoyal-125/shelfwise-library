@@ -139,3 +139,77 @@ test('archived books are hidden from the catalog, cannot be borrowed, but histor
   assert.equal((await call('POST', '/reservations', { bookId: b._id }, mem)).status, 409);
   assert.equal((await call('PUT', '/books/' + b._id, { archived: false }, adm)).status, 200);
 });
+
+test('student borrow requests need librarian approval', async () => {
+  const lib = await login('librarian@shelfwise.demo', 'StaffPass#1');
+  const adm = await login('admin@shelfwise.demo', 'StaffPass#1');
+  const kabir = await login('kabir@shelfwise.demo', 'MemberPass#1');
+  const diya = await login('diya@shelfwise.demo', 'MemberPass#1');
+  const fac = await login('saanvi@shelfwise.demo', 'MemberPass#1');
+  // a fresh student with no seeded loans, so counts are exact
+  const reg = await call('POST', '/auth/register', { name: 'Riya Test', email: 'riya@x.io', password: 'password123' });
+  assert.equal(reg.status, 201);
+  const riya = reg.body.token;
+
+  // faculty borrow directly, only students request
+  assert.equal((await call('POST', '/requests', { bookId: (await call('GET', '/books?limit=1', null, fac)).body.items[0]._id }, fac)).status, 400);
+  // staff issue directly, no request needed
+  assert.equal((await call('POST', '/requests', { bookId: '507f1f77bcf86cd799439011' }, lib)).status, 400);
+
+  const b = (await call('POST', '/books', { title: 'Request Book', author: 'R', category: 'Test', totalCopies: 2 }, adm)).body;
+  // diya has an overdue seeded loan, so requesting is blocked
+  assert.equal((await call('POST', '/requests', { bookId: b._id }, diya)).status, 400);
+  // riya requests: pending, and no copy is taken yet
+  const r1 = await call('POST', '/requests', { bookId: b._id }, riya);
+  assert.equal(r1.status, 201);
+  assert.equal(r1.body.status, 'pending');
+  assert.equal((await call('GET', '/books/' + b._id, null, riya)).body.availableCopies, 2);
+  assert.equal((await call('POST', '/requests', { bookId: b._id }, riya)).status, 409); // duplicate pending
+  // catalog flags the book as requested by the student
+  const cat = (await call('GET', '/books?q=Request%20Book', null, riya)).body.items.find((x) => x._id === b._id);
+  assert.equal(cat.requestedByMe, true);
+  // members cannot see the staff queue, staff can
+  assert.equal((await call('GET', '/requests', null, riya)).status, 403);
+  assert.ok((await call('GET', '/requests?status=pending', null, lib)).body.some((x) => x._id === r1.body._id));
+  // students cannot approve
+  assert.equal((await call('POST', `/requests/${r1.body._id}/approve`, null, riya)).status, 403);
+  // kabir requests, then cancels his own pending request; others cannot cancel it
+  const r2 = await call('POST', '/requests', { bookId: b._id }, kabir);
+  assert.equal(r2.status, 201);
+  assert.equal((await call('POST', `/requests/${r2.body._id}/cancel`, null, riya)).status, 403);
+  assert.equal((await call('POST', `/requests/${r2.body._id}/cancel`, null, kabir)).status, 200);
+  // librarian rejects: no loan, no copy taken
+  const r3 = await call('POST', '/requests', { bookId: b._id }, kabir);
+  assert.equal((await call('POST', `/requests/${r3.body._id}/reject`, null, lib)).status, 200);
+  assert.equal((await call('GET', '/books/' + b._id, null, lib)).body.availableCopies, 2);
+  assert.equal((await call('GET', '/loans/mine', null, kabir)).body.filter((l) => l.book && l.book.title === 'Request Book').length, 0);
+  // librarian approves: the loan starts now, and only now does the copy count drop
+  const ok = await call('POST', `/requests/${r1.body._id}/approve`, null, lib);
+  assert.equal(ok.status, 200);
+  assert.ok(ok.body.dueAt);
+  assert.equal((await call('GET', '/books/' + b._id, null, lib)).body.availableCopies, 1);
+  assert.ok((await call('GET', '/loans/mine', null, riya)).body.some((l) => l.book && l.book.title === 'Request Book' && !l.returnedAt));
+  // decided requests cannot be re-decided or cancelled
+  assert.equal((await call('POST', `/requests/${r1.body._id}/approve`, null, lib)).status, 409);
+  assert.equal((await call('POST', `/requests/${r1.body._id}/cancel`, null, riya)).status, 409);
+  // approval respects availability: request while a copy is free, then the copy goes, approval fails and the request stays pending
+  const g = (await call('POST', '/books', { title: 'Gone Book', author: 'G', category: 'Test', totalCopies: 1 }, adm)).body;
+  const r4 = await call('POST', '/requests', { bookId: g._id }, kabir);
+  assert.equal(r4.status, 201);
+  assert.equal((await call('POST', '/loans', { bookId: g._id }, fac)).status, 201); // faculty takes the only copy directly
+  assert.equal((await call('POST', `/requests/${r4.body._id}/approve`, null, lib)).status, 409);
+  assert.equal((await call('GET', '/requests?status=pending', null, lib)).body.some((x) => x._id === r4.body._id), true);
+  assert.equal((await call('POST', `/requests/${r4.body._id}/cancel`, null, kabir)).status, 200);
+  // requesting a book with no copies available points at reserving instead
+  assert.equal((await call('POST', '/requests', { bookId: g._id }, kabir)).status, 409);
+  // pending requests count toward the borrowing limit (kabir: 2 seeded active loans, max 3)
+  const c1 = (await call('POST', '/books', { title: 'Limit One', author: 'L', category: 'Test', totalCopies: 1 }, adm)).body;
+  const c2 = (await call('POST', '/books', { title: 'Limit Two', author: 'L', category: 'Test', totalCopies: 1 }, adm)).body;
+  assert.equal((await call('POST', '/requests', { bookId: c1._id }, kabir)).status, 201);
+  assert.equal((await call('POST', '/requests', { bookId: c2._id }, kabir)).status, 400);
+  // archived books cannot be requested
+  assert.equal((await call('PUT', '/books/' + c2._id, { archived: true }, adm)).status, 200);
+  assert.equal((await call('POST', '/requests', { bookId: c2._id }, riya)).status, 409);
+  // stats expose the pending queue
+  assert.ok((await call('GET', '/stats', null, lib)).body.pendingRequests >= 1);
+});

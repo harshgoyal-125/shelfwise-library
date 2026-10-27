@@ -2,13 +2,15 @@ import React, { useEffect, useState } from 'react';
 import Toast from '../Toast.jsx';
 import { api, fmtDate } from '../api.js';
 
-export default function MyLoans() {
+export default function MyLoans({ user }) {
   const [loans, setLoans] = useState(null);
   const [resv, setResv] = useState([]);
+  const [reqs, setReqs] = useState([]);
   const [msg, setMsg] = useState(null);
   const load = () => {
     api('/loans/mine').then(setLoans).catch((e) => setMsg({ err: e.message }));
     api('/reservations/mine').then(setResv).catch(() => {});
+    api('/requests/mine').then(setReqs).catch(() => {});
   };
   useEffect(() => { load(); }, []);
   async function act(id, what) {
@@ -21,8 +23,15 @@ export default function MyLoans() {
     try { await api('/reservations/' + id, { method: 'DELETE' }); setMsg({ ok: 'Reservation cancelled.' }); load(); }
     catch (e) { setMsg({ err: e.message }); }
   }
+  async function cancelReq(id) {
+    setMsg(null);
+    try { await api('/requests/' + id + '/cancel', { method: 'POST' }); setMsg({ ok: 'Request cancelled.' }); load(); }
+    catch (e) { setMsg({ err: e.message }); }
+  }
   if (!loans) return <p className="muted">Loading…</p>;
   const waiting = resv.filter((r) => r.status === 'waiting');
+  const pendingReqs = reqs.filter((r) => r.status === 'pending');
+  const decidedReqs = reqs.filter((r) => r.status === 'rejected').slice(0, 5);
   const active = loans.filter((l) => !l.returnedAt);
   const past = loans.filter((l) => l.returnedAt);
   const fines = loans.reduce((s, l) => s + (l.fine || 0), 0);
@@ -35,6 +44,34 @@ export default function MyLoans() {
         <div className="stat card"><b>{active.filter((l) => l.overdue).length}</b><span>Overdue</span></div>
         <div className="stat card"><b>₹{fines}</b><span>Fines (₹5/day late)</span></div>
       </div>
+      {user?.role === 'student' && (<>
+      <h3>Requests</h3>
+      {pendingReqs.length === 0 && decidedReqs.length === 0 ? <p className="muted">No pending requests. Request a book from the catalog and the librarian will approve it.</p> : (
+        <div className="list">
+          {pendingReqs.map((r) => (
+            <div className="item card" key={r._id}>
+              <div className="grow">
+                <b>{r.book?.title}</b>
+                <div className="small-text muted">Requested {fmtDate(r.createdAt)} · waiting for librarian approval</div>
+              </div>
+              <div className="row gap">
+                <span className="badge warn">Pending</span>
+                <button className="btn small" onClick={() => cancelReq(r._id)}>Cancel</button>
+              </div>
+            </div>
+          ))}
+          {decidedReqs.map((r) => (
+            <div className="item card" key={r._id}>
+              <div className="grow">
+                <b>{r.book?.title}</b>
+                <div className="small-text muted">Requested {fmtDate(r.createdAt)}</div>
+              </div>
+              <span className="badge">Rejected</span>
+            </div>
+          ))}
+        </div>
+      )}
+      </>)}
       <h3>Currently borrowed</h3>
       {active.length === 0 ? <p className="muted">Nothing borrowed. Visit the catalog to pick a book.</p> : (
         <div className="list">

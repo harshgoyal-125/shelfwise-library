@@ -52,6 +52,14 @@ export default function Catalog({ user }) {
   async function borrow(book) {
     setMsg(null);
     if (staff && !memberId) { setMsg({ err: 'Choose a member to issue this book to' }); return; }
+    if (user.role === 'student') {
+      try {
+        await api('/requests', { method: 'POST', body: { bookId: book._id } });
+        setMsg({ ok: `Request sent for "${book.title}". The loan starts once the librarian approves it.` });
+        load();
+      } catch (e) { setMsg({ err: e.message }); }
+      return;
+    }
     try {
       const l = await api('/loans', { method: 'POST', body: { bookId: book._id, memberId: staff ? memberId : undefined } });
       setMsg({ ok: `"${book.title}" issued. Due ${new Date(l.dueAt).toLocaleDateString('en-IN', { day: 'numeric', month: 'short' })}.` });
@@ -61,7 +69,7 @@ export default function Catalog({ user }) {
 
   return (
     <>
-      <div className="hero"><h2>{staff ? 'Library catalog' : `Welcome, ${user.name.split(' ')[0]}`}</h2><p>{staff ? 'Search the collection and issue books to members.' : 'Find your next read and borrow it in one tap.'}</p></div>
+      <div className="hero"><h2>{staff ? 'Library catalog' : `Welcome, ${user.name.split(' ')[0]}`}</h2><p>{staff ? 'Search the collection and issue books to members.' : user.role === 'student' ? 'Find your next read and request it in one tap. The librarian approves requests.' : 'Find your next read and borrow it in one tap.'}</p></div>
       <div className="filters">
         <input className="grow" type="search" placeholder="Search title, author, category or ISBN" value={q} onChange={(e) => setQ(e.target.value)} />
         <select value={category} onChange={(e) => { setCategory(e.target.value); setPage(1); }}>
@@ -97,6 +105,8 @@ export default function Catalog({ user }) {
                   <button className="btn small ghost" onClick={() => setOpen(open === b._id ? null : b._id)}>{open === b._id ? 'Less' : 'Details'}</button>
                   {b.availableCopies - b.waiting < 1 && !(b.reservedByMe && b.availableCopies > 0) ? (
                     <button className="btn small primary" disabled={b.reservedByMe} onClick={() => reserve(b)}>{b.reservedByMe ? 'Reserved' : 'Reserve'}</button>
+                  ) : user.role === 'student' ? (
+                    <button className="btn small primary" disabled={b.requestedByMe} onClick={() => borrow(b)}>{b.requestedByMe ? 'Requested' : 'Request'}</button>
                   ) : (
                     <button className="btn small primary" onClick={() => borrow(b)}>{staff ? 'Issue' : 'Borrow'}</button>
                   )}

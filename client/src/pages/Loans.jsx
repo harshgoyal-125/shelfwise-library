@@ -6,15 +6,17 @@ export default function Loans() {
   const [status, setStatus] = useState('active');
   const [loans, setLoans] = useState(null);
   const isRes = status === 'reservations';
+  const isReq = status === 'requests';
   const [msg, setMsg] = useState(null);
-  const load = () => api(status === 'reservations' ? '/reservations' : '/loans?status=' + status).then(setLoans).catch((e) => setMsg({ err: e.message }));
+  const load = () => api(isReq ? '/requests?status=pending' : isRes ? '/reservations' : '/loans?status=' + status).then(setLoans).catch((e) => setMsg({ err: e.message }));
   useEffect(() => { setLoans(null); load(); /* eslint-disable-next-line */ }, [status]);
   async function act(id, what) {
     setMsg(null);
     try {
       if (what === 'cancel') await api('/reservations/' + id, { method: 'DELETE' });
+      else if (what === 'approve' || what === 'reject') await api(`/requests/${id}/${what}`, { method: 'POST' });
       else await api(`/loans/${id}/${what}`, { method: 'POST' });
-      setMsg({ ok: what === 'return' ? 'Marked as returned.' : what === 'cancel' ? 'Reservation cancelled.' : 'Renewed.' });
+      setMsg({ ok: what === 'return' ? 'Marked as returned.' : what === 'cancel' ? 'Reservation cancelled.' : what === 'approve' ? 'Request approved, book issued.' : what === 'reject' ? 'Request rejected.' : 'Renewed.' });
       load();
     }
     catch (e) { setMsg({ err: e.message }); }
@@ -23,13 +25,25 @@ export default function Loans() {
     <>
       <h2>Loans</h2>
       <div className="chips">
-        {['active', 'overdue', 'returned', 'all', 'reservations'].map((s) => <button key={s} className={'chip' + (status === s ? ' on' : '')} onClick={() => setStatus(s)}>{s[0].toUpperCase() + s.slice(1)}</button>)}
+        {['active', 'overdue', 'returned', 'all', 'reservations', 'requests'].map((s) => <button key={s} className={'chip' + (status === s ? ' on' : '')} onClick={() => setStatus(s)}>{s[0].toUpperCase() + s.slice(1)}</button>)}
       </div>
       <p className="muted small-text">To issue a book, open the Catalog, pick a member and press Issue.</p>
       <Toast msg={msg} onClose={() => setMsg(null)} />
       {!loans ? <p className="muted">Loading…</p> : loans.length === 0 ? <p className="muted">Nothing here.</p> : (
         <div className="list">
-          {loans.map((l) => isRes ? (
+          {loans.map((l) => isReq ? (
+            <div className="item card" key={l._id}>
+              <div className="grow">
+                <b>{l.book?.title}</b>
+                <div className="muted">{l.member?.name} · {l.member?.memberId}</div>
+                <div className="small-text">Requested {fmtDate(l.createdAt)} · {l.book?.availableCopies > 0 ? `${l.book.availableCopies} available` : 'no copies available'}</div>
+              </div>
+              <div className="row gap">
+                <button className="btn small primary" onClick={() => act(l._id, 'approve')}>Approve</button>
+                <button className="btn small" onClick={() => act(l._id, 'reject')}>Reject</button>
+              </div>
+            </div>
+          ) : isRes ? (
             <div className="item card" key={l._id}>
               <div className="grow">
                 <b>{l.book?.title}</b>

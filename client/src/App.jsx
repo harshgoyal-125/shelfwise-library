@@ -60,7 +60,7 @@ export default function App() {
       <main className="page">
         <Routes>
           <Route path="/" element={<Catalog user={user} />} />
-          <Route path="/my-loans" element={staff ? <Navigate to="/loans" /> : <MyLoans />} />
+          <Route path="/my-loans" element={staff ? <Navigate to="/loans" /> : <MyLoans user={user} />} />
           <Route path="/dashboard" element={staff ? <Dashboard /> : <Navigate to="/" />} />
           <Route path="/books" element={staff ? <ManageBooks user={user} /> : <Navigate to="/" />} />
           <Route path="/loans" element={staff ? <Loans /> : <Navigate to="/" />} />

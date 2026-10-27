@@ -35,6 +35,15 @@ const loanSchema = new Schema({
   fine: { type: Number, default: 0 },
 }, { timestamps: true });
 
+const requestSchema = new Schema({
+  book: { type: Schema.Types.ObjectId, ref: 'Book', required: true, index: true },
+  member: { type: Schema.Types.ObjectId, ref: 'User', required: true, index: true },
+  status: { type: String, enum: ['pending', 'approved', 'rejected', 'cancelled'], default: 'pending', index: true },
+  decidedBy: { type: Schema.Types.ObjectId, ref: 'User' },
+  decidedAt: Date,
+  loan: { type: Schema.Types.ObjectId, ref: 'Loan' },
+}, { timestamps: true });
+
 const reservationSchema = new Schema({
   book: { type: Schema.Types.ObjectId, ref: 'Book', required: true, index: true },
   member: { type: Schema.Types.ObjectId, ref: 'User', required: true, index: true },
@@ -42,6 +51,7 @@ const reservationSchema = new Schema({
 }, { timestamps: true });
 
 module.exports = {
+  Request: mongoose.models.Request || mongoose.model('Request', requestSchema),
   Reservation: mongoose.models.Reservation || mongoose.model('Reservation', reservationSchema),
   User: mongoose.models.User || mongoose.model('User', userSchema),
   Book: mongoose.models.Book || mongoose.model('Book', bookSchema),

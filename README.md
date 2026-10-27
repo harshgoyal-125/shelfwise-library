@@ -12,11 +12,13 @@ A full-stack library management demo built for the MERN semester mini project.
 | Role | What they can do |
 | --- | --- |
 | Admin | Everything: dashboard, add/edit/delete books, issue/return, manage members, create accounts of any role |
-| Librarian | Dashboard, add/edit books, issue/return/renew loans, activate/deactivate members |
+| Librarian | Dashboard, add/edit books, approve/reject student borrow requests, issue/return/renew loans, activate/deactivate members |
 | Faculty | Search the catalog, borrow up to 6 books for 30 days, renew once (+14 days), see own loans and fines |
-| Student | Search the catalog, borrow up to 3 books for 14 days, renew once (+7 days), see own loans and fines |
+| Student | Search the catalog, request books (a loan starts only when the librarian approves), up to 3 active loans + pending requests, 14-day loans, renew once (+7 days), see own loans and fines |
 
 Reservation queue: when every copy of a title is out, members can reserve it (first in, first out). Returned copies are held for the queue, the member's queue position is shown, and borrowing fulfils the reservation. Reservations can be cancelled by the member or staff.
+
+Borrow requests: students request a book from the catalog; the request is pending until a librarian (or admin) approves it from Loans > Requests, and only then does the loan start and the available copy count drop. Requests can be rejected, or cancelled by the student while pending, and pending requests count toward the student's 3-book limit.
 
 Other rules: overdue fine is Rs 5 per day, overdue members cannot borrow more, one copy of a title per member, the last copy can't be double-borrowed (atomic stock update), books with active loans can't be deleted. New visitors can self-register as students.
 
@@ -25,7 +27,7 @@ Other rules: overdue fine is Rs 5 per day, overdue members cannot borrow more, o
 ```
 server/src
   app.js      Express app, middleware, REST routes
-  models.js   Mongoose schemas: User, Book, Loan, Reservation
+  models.js   Mongoose schemas: User, Book, Loan, Reservation, Request
   config.js   Loan policy per role
   seed.js     Sample data (30 books, 8 accounts, 14 loans, 2 reservations)
   index.js    Entry point (connects to MongoDB, seeds if empty)
