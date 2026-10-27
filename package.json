@@ -1,0 +1,14 @@
+{
+  "name": "shelfwise-library",
+  "version": "1.0.0",
+  "private": true,
+  "description": "ShelfWise - MERN library management demo",
+  "scripts": {
+    "build": "npm install --prefix server && npm install --include=dev --prefix client && npm run build --prefix client",
+    "start": "node server/src/index.js",
+    "dev:server": "node --watch server/src/index.js",
+    "dev:client": "npm run dev --prefix client",
+    "test": "npm test --prefix server"
+  },
+  "engines": { "node": ">=18" }
+}
