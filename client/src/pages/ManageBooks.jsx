@@ -48,12 +48,12 @@ export default function ManageBooks({ user }) {
         </form>
       )}
       <div className="table-wrap card">
-        <table>
+        <table className="books-table">
           <thead><tr><th>Title</th><th>Category</th><th>Copies</th><th></th></tr></thead>
           <tbody>
             {books.map((b) => (
               <tr key={b._id}>
-                <td><b>{b.title}</b><div className="muted small-text">{b.author}</div></td>
+                <td><b>{b.title}</b><div className="muted small-text">{b.author}<span className="only-mobile"> · {b.category}</span></div></td>
                 <td>{b.category}</td>
                 <td>{b.availableCopies}/{b.totalCopies}</td>
                 <td className="actions">
