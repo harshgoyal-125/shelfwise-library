@@ -1,4 +1,5 @@
 import React, { useEffect, useState } from 'react';
+import Toast from '../Toast.jsx';
 import { api, ROLE_LABEL } from '../api.js';
 
 export default function Staff() {
@@ -17,8 +18,7 @@ export default function Staff() {
     <>
       <h2>Accounts</h2>
       <p className="muted">Only admins can create librarian, faculty, student or other admin accounts.</p>
-      {msg?.err && <div className="error" role="alert">{msg.err}</div>}
-      {msg?.ok && <div className="success" role="status">{msg.ok}</div>}
+      <Toast msg={msg} onClose={() => setMsg(null)} />
       <form className="card pad form" onSubmit={create}>
         <h3>Create account</h3>
         <div className="fgrid">

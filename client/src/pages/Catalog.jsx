@@ -1,4 +1,5 @@
 import React, { useEffect, useState } from 'react';
+import Toast from '../Toast.jsx';
 import { api, isStaff } from '../api.js';
 
 const palette = ['#1e3a5f', '#7c3a4a', '#2f6b4f', '#8a5a14', '#4a3a7c', '#245c6b', '#6b2f2f', '#3b4a5a'];
@@ -50,7 +51,7 @@ export default function Catalog({ user }) {
 
   return (
     <>
-      <h2>Catalog</h2>
+      <div className="hero"><h2>{staff ? 'Library catalog' : `Welcome, ${user.name.split(' ')[0]}`}</h2><p>{staff ? 'Search the collection and issue books to members.' : 'Find your next read and borrow it in one tap.'}</p></div>
       <div className="filters">
         <input className="grow" type="search" placeholder="Search title, author, category or ISBN" value={q} onChange={(e) => setQ(e.target.value)} />
         <select value={category} onChange={(e) => { setCategory(e.target.value); setPage(1); }}>
@@ -68,8 +69,7 @@ export default function Catalog({ user }) {
           </select>
         </div>
       )}
-      {msg?.err && <div className="error" role="alert">{msg.err}</div>}
-      {msg?.ok && <div className="success" role="status">{msg.ok}</div>}
+      <Toast msg={msg} onClose={() => setMsg(null)} />
       {loading ? <p className="muted">Loading books…</p> : data.items.length === 0 ? <p className="muted">No books match your search.</p> : (
         <div className="grid">
           {data.items.map((b) => (

@@ -76,7 +76,6 @@ test('borrow, limits, renew, return', async () => {
 test('last copy cannot be double-borrowed', async () => {
   const adm = await login('admin@shelfwise.demo', 'StaffPass#1');
   const b = (await call('POST', '/books', { title: 'One Copy', author: 'X', category: 'Test', totalCopies: 1 }, adm)).body;
-  const members = (await call('GET', '/members', null, adm)).body.filter((m) => m.activeLoans === 0 || m.role === 'student').slice(0, 2);
   const tok = await Promise.all(['meera@shelfwise.demo', 'saanvi@shelfwise.demo'].map((e) => login(e, 'MemberPass#1')));
   const rs = await Promise.all(tok.map((t) => call('POST', '/loans', { bookId: b._id }, t)));
   assert.equal(rs.filter((r) => r.status === 201).length, 1);

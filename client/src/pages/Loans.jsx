@@ -1,4 +1,5 @@
 import React, { useEffect, useState } from 'react';
+import Toast from '../Toast.jsx';
 import { api, fmtDate } from '../api.js';
 
 export default function Loans() {
@@ -19,8 +20,7 @@ export default function Loans() {
         {['active', 'overdue', 'returned', 'all'].map((s) => <button key={s} className={'chip' + (status === s ? ' on' : '')} onClick={() => setStatus(s)}>{s[0].toUpperCase() + s.slice(1)}</button>)}
       </div>
       <p className="muted small-text">To issue a book, open the Catalog, pick a member and press Issue.</p>
-      {msg?.err && <div className="error" role="alert">{msg.err}</div>}
-      {msg?.ok && <div className="success" role="status">{msg.ok}</div>}
+      <Toast msg={msg} onClose={() => setMsg(null)} />
       {!loans ? <p className="muted">Loading…</p> : loans.length === 0 ? <p className="muted">No loans here.</p> : (
         <div className="list">
           {loans.map((l) => (

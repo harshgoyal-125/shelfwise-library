@@ -12,6 +12,9 @@ import Staff from './pages/Staff.jsx';
 
 export default function App() {
   const [user, setUser] = useState(null);
+  const [theme, setTheme] = useState(() => localStorage.getItem('shelfwise_theme') || (window.matchMedia?.('(prefers-color-scheme: dark)').matches ? 'dark' : 'light'));
+  useEffect(() => { document.documentElement.dataset.theme = theme; localStorage.setItem('shelfwise_theme', theme); }, [theme]);
+  const toggleTheme = () => setTheme(theme === 'dark' ? 'light' : 'dark');
   const [ready, setReady] = useState(false);
   const nav = useNavigate();
 
@@ -29,7 +32,7 @@ export default function App() {
   if (!user) {
     return (
       <Routes>
-        <Route path="*" element={<Login onLogin={(u) => { setUser(u); nav(isStaff(u) ? '/dashboard' : '/'); }} />} />
+        <Route path="*" element={<Login theme={theme} onTheme={toggleTheme} onLogin={(u) => { setUser(u); nav(isStaff(u) ? '/dashboard' : '/'); }} />} />
       </Routes>
     );
   }
@@ -50,6 +53,7 @@ export default function App() {
         <div className="who">
           <span className={'badge role-' + user.role}>{ROLE_LABEL[user.role]}</span>
           <span className="name">{user.name}</span>
+          <button className="btn small ghost" onClick={toggleTheme} aria-label="Toggle dark mode" title="Toggle dark mode">{theme === 'dark' ? '☀️' : '🌙'}</button>
           <button className="btn small ghost" onClick={logout}>Log out</button>
         </div>
       </header>

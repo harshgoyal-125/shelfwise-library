@@ -8,7 +8,7 @@ const DEMO = [
   ['Student', 'student@shelfwise.demo'],
 ];
 
-export default function Login({ onLogin }) {
+export default function Login({ onLogin, theme, onTheme }) {
   const [mode, setMode] = useState('login');
   const [f, setF] = useState({ name: '', email: '', password: '' });
   const [err, setErr] = useState('');
@@ -27,6 +27,7 @@ export default function Login({ onLogin }) {
 
   return (
     <div className="login-wrap">
+      <button type="button" className="btn small ghost theme-fab" onClick={onTheme} aria-label="Toggle dark mode">{theme === 'dark' ? '☀️' : '🌙'}</button>
       <form className="card login" onSubmit={submit}>
         <div className="login-brand"><span className="logo big">📚</span><h1>ShelfWise</h1><p className="muted">Library management system</p></div>
         {mode === 'register' && (

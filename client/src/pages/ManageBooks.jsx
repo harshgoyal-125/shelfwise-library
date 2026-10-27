@@ -1,4 +1,5 @@
 import React, { useEffect, useState } from 'react';
+import Toast from '../Toast.jsx';
 import { api } from '../api.js';
 
 const empty = { title: '', author: '', category: '', isbn: '', year: '', shelf: '', totalCopies: 1, description: '' };
@@ -29,8 +30,7 @@ export default function ManageBooks({ user }) {
     <>
       <div className="row between"><h2>Manage books</h2><button className="btn primary" onClick={() => setForm({ ...empty })}>Add book</button></div>
       <div className="filters"><input className="grow" type="search" placeholder="Search books" value={q} onChange={(e) => setQ(e.target.value)} /></div>
-      {msg?.err && <div className="error" role="alert">{msg.err}</div>}
-      {msg?.ok && <div className="success" role="status">{msg.ok}</div>}
+      <Toast msg={msg} onClose={() => setMsg(null)} />
       {form && (
         <form className="card pad form" onSubmit={save}>
           <h3>{form._id ? 'Edit book' : 'New book'}</h3>

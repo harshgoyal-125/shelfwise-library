@@ -1,4 +1,5 @@
 import React, { useEffect, useState } from 'react';
+import Toast from '../Toast.jsx';
 import { api, fmtDate } from '../api.js';
 
 export default function MyLoans() {
@@ -18,8 +19,7 @@ export default function MyLoans() {
   return (
     <>
       <h2>My loans</h2>
-      {msg?.err && <div className="error" role="alert">{msg.err}</div>}
-      {msg?.ok && <div className="success" role="status">{msg.ok}</div>}
+      <Toast msg={msg} onClose={() => setMsg(null)} />
       <div className="stats">
         <div className="stat card"><b>{active.length}</b><span>Borrowed now</span></div>
         <div className="stat card"><b>{active.filter((l) => l.overdue).length}</b><span>Overdue</span></div>
