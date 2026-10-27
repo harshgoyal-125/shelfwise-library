@@ -34,7 +34,14 @@ const loanSchema = new Schema({
   fine: { type: Number, default: 0 },
 }, { timestamps: true });
 
+const reservationSchema = new Schema({
+  book: { type: Schema.Types.ObjectId, ref: 'Book', required: true, index: true },
+  member: { type: Schema.Types.ObjectId, ref: 'User', required: true, index: true },
+  status: { type: String, enum: ['waiting', 'fulfilled', 'cancelled'], default: 'waiting' },
+}, { timestamps: true });
+
 module.exports = {
+  Reservation: mongoose.models.Reservation || mongoose.model('Reservation', reservationSchema),
   User: mongoose.models.User || mongoose.model('User', userSchema),
   Book: mongoose.models.Book || mongoose.model('Book', bookSchema),
   Loan: mongoose.models.Loan || mongoose.model('Loan', loanSchema),

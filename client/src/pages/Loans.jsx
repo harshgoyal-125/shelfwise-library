@@ -5,25 +5,40 @@ import { api, fmtDate } from '../api.js';
 export default function Loans() {
   const [status, setStatus] = useState('active');
   const [loans, setLoans] = useState(null);
+  const isRes = status === 'reservations';
   const [msg, setMsg] = useState(null);
-  const load = () => api('/loans?status=' + status).then(setLoans).catch((e) => setMsg({ err: e.message }));
+  const load = () => api(status === 'reservations' ? '/reservations' : '/loans?status=' + status).then(setLoans).catch((e) => setMsg({ err: e.message }));
   useEffect(() => { setLoans(null); load(); /* eslint-disable-next-line */ }, [status]);
   async function act(id, what) {
     setMsg(null);
-    try { await api(`/loans/${id}/${what}`, { method: 'POST' }); setMsg({ ok: what === 'return' ? 'Marked as returned.' : 'Renewed.' }); load(); }
+    try {
+      if (what === 'cancel') await api('/reservations/' + id, { method: 'DELETE' });
+      else await api(`/loans/${id}/${what}`, { method: 'POST' });
+      setMsg({ ok: what === 'return' ? 'Marked as returned.' : what === 'cancel' ? 'Reservation cancelled.' : 'Renewed.' });
+      load();
+    }
     catch (e) { setMsg({ err: e.message }); }
   }
   return (
     <>
       <h2>Loans</h2>
       <div className="chips">
-        {['active', 'overdue', 'returned', 'all'].map((s) => <button key={s} className={'chip' + (status === s ? ' on' : '')} onClick={() => setStatus(s)}>{s[0].toUpperCase() + s.slice(1)}</button>)}
+        {['active', 'overdue', 'returned', 'all', 'reservations'].map((s) => <button key={s} className={'chip' + (status === s ? ' on' : '')} onClick={() => setStatus(s)}>{s[0].toUpperCase() + s.slice(1)}</button>)}
       </div>
       <p className="muted small-text">To issue a book, open the Catalog, pick a member and press Issue.</p>
       <Toast msg={msg} onClose={() => setMsg(null)} />
-      {!loans ? <p className="muted">Loading…</p> : loans.length === 0 ? <p className="muted">No loans here.</p> : (
+      {!loans ? <p className="muted">Loading…</p> : loans.length === 0 ? <p className="muted">Nothing here.</p> : (
         <div className="list">
-          {loans.map((l) => (
+          {loans.map((l) => isRes ? (
+            <div className="item card" key={l._id}>
+              <div className="grow">
+                <b>{l.book?.title}</b>
+                <div className="muted">{l.member?.name} · {l.member?.memberId}</div>
+                <div className="small-text">Queue position {l.position} · reserved {fmtDate(l.createdAt)}</div>
+              </div>
+              <button className="btn small" onClick={() => act(l._id, 'cancel')}>Cancel</button>
+            </div>
+          ) : (
             <div className="item card" key={l._id}>
               <div className="grow">
                 <b>{l.book?.title}</b>

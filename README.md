@@ -16,6 +16,8 @@ A full-stack library management demo built for the MERN semester mini project.
 | Faculty | Search the catalog, borrow up to 6 books for 30 days, renew once (+14 days), see own loans and fines |
 | Student | Search the catalog, borrow up to 3 books for 14 days, renew once (+7 days), see own loans and fines |
 
+Reservation queue: when every copy of a title is out, members can reserve it (first in, first out). Returned copies are held for the queue, the member's queue position is shown, and borrowing fulfils the reservation. Reservations can be cancelled by the member or staff.
+
 Other rules: overdue fine is Rs 5 per day, overdue members cannot borrow more, one copy of a title per member, the last copy can't be double-borrowed (atomic stock update), books with active loans can't be deleted. New visitors can self-register as students.
 
 ## Folder structure
@@ -23,9 +25,9 @@ Other rules: overdue fine is Rs 5 per day, overdue members cannot borrow more, o
 ```
 server/src
   app.js      Express app, middleware, REST routes
-  models.js   Mongoose schemas: User, Book, Loan
+  models.js   Mongoose schemas: User, Book, Loan, Reservation
   config.js   Loan policy per role
-  seed.js     Sample data (30 books, 8 accounts, 13 loans)
+  seed.js     Sample data (30 books, 8 accounts, 14 loans, 2 reservations)
   index.js    Entry point (connects to MongoDB, seeds if empty)
 server/test   API tests (node:test + in-memory MongoDB)
 client/src
@@ -39,6 +41,7 @@ client/src
 - `GET /books` (search `q`, `category`, `available`, `page`), `GET /books/categories`, `GET /books/:id`
 - `POST /books`, `PUT /books/:id` (staff), `DELETE /books/:id` (admin)
 - `POST /loans` (borrow, or staff issue with `memberId`), `GET /loans/mine`, `GET /loans` (staff), `POST /loans/:id/return`, `POST /loans/:id/renew`
+- `POST /reservations`, `GET /reservations/mine`, `GET /reservations` (staff), `DELETE /reservations/:id`
 - `GET /members`, `PATCH /members/:id` (staff), `GET /staff`, `POST /users` (admin), `GET /stats` (staff)
 
 ## Run locally
@@ -68,7 +71,7 @@ For frontend development run `npm run dev:server` and `npm run dev:client` in tw
 cd server && npm install && npm test
 ```
 
-Covers login, operator-injection blocking, role permissions, borrow/renew/return rules, loan limits and the last-copy race.
+Covers login, operator-injection blocking, role permissions, borrow/renew/return rules, loan limits, the last-copy race and the reservation queue.
 
 ## Security notes
 

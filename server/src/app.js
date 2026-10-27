@@ -8,7 +8,7 @@ const rateLimit = require('express-rate-limit');
 const bcrypt = require('bcryptjs');
 const jwt = require('jsonwebtoken');
 const mongoose = require('mongoose');
-const { User, Book, Loan } = require('./models');
+const { User, Book, Loan, Reservation } = require('./models');
 const cfg = require('./config');
 
 const wrap = (fn) => (req, res, next) => Promise.resolve(fn(req, res, next)).catch(next);
@@ -102,7 +102,14 @@ function createApp({ jwtSecret, clientDir } = {}) {
       Book.find(filter).sort({ title: 1 }).skip((page - 1) * limit).limit(limit),
       Book.countDocuments(filter),
     ]);
-    res.json({ items, total, page, pages: Math.max(1, Math.ceil(total / limit)) });
+    const waits = await Reservation.aggregate([{ $match: { status: 'waiting', book: { $in: items.map((b) => b._id) } } }, { $group: { _id: '$book', n: { $sum: 1 } } }]);
+    const wm = Object.fromEntries(waits.map((w) => [String(w._id), w.n]));
+    const mine = await Reservation.find({ member: req.user._id, status: 'waiting', book: { $in: items.map((b) => b._id) } }).select('book');
+    const mset = new Set(mine.map((r) => String(r.book)));
+    res.json({
+      items: items.map((b) => ({ ...b.toObject(), waiting: wm[String(b._id)] || 0, reservedByMe: mset.has(String(b._id)) })),
+      total, page, pages: Math.max(1, Math.ceil(total / limit)),
+    });
   }));
   api.get('/books/categories', auth, wrap(async (req, res) => res.json(await Book.distinct('category').then((c) => c.sort()))));
   api.get('/books/:id', auth, wrap(async (req, res) => {
@@ -151,6 +158,7 @@ function createApp({ jwtSecret, clientDir } = {}) {
     if (await Loan.exists({ book: req.params.id, returnedAt: null })) return bad(res, 'This book has active loans', 409);
     const r = await Book.findByIdAndDelete(req.params.id);
     if (!r) return bad(res, 'Book not found', 404);
+    await Reservation.deleteMany({ book: req.params.id });
     res.json({ ok: true });
   }));
 
@@ -162,10 +170,18 @@ function createApp({ jwtSecret, clientDir } = {}) {
     if (active.length >= pol.maxLoans) return { error: `Limit reached: ${member.role}s can borrow at most ${pol.maxLoans} books at a time` };
     if (active.some((l) => String(l.book) === String(bookId))) return { error: 'This member already has this book' };
     if (active.some((l) => l.dueAt < new Date())) return { error: 'Return overdue books before borrowing more' };
+    // copies are held for members waiting in the reservation queue
+    const waitingOthers = await Reservation.countDocuments({ book: bookId, status: 'waiting', member: { $ne: member._id } });
+    const current = await Book.findById(bookId);
+    if (!current) return { error: 'Book not found', code: 404 };
+    if (current.availableCopies - waitingOthers < 1) {
+      return { error: current.availableCopies > 0 ? 'The available copies are held for members in the reservation queue' : 'No copies available right now. You can reserve it instead.', code: 409 };
+    }
     // atomic decrement prevents overselling the last copy
     const book = await Book.findOneAndUpdate({ _id: bookId, availableCopies: { $gt: 0 } }, { $inc: { availableCopies: -1 } }, { new: true });
     if (!book) return { error: 'No copies available right now', code: 409 };
     const loan = await Loan.create({ book: bookId, member: member._id, dueAt: new Date(Date.now() + pol.days * DAY) });
+    await Reservation.updateMany({ book: bookId, member: member._id, status: 'waiting' }, { status: 'fulfilled' });
     return { loan };
   }
   api.post('/loans', auth, wrap(async (req, res) => {
@@ -220,6 +236,52 @@ function createApp({ jwtSecret, clientDir } = {}) {
     res.json(loanView(loan));
   }));
 
+  // ---- Reservations (FIFO queue per book)
+  const queueInfo = async (r) => {
+    const o = r.toObject ? r.toObject() : r;
+    if (o.status !== 'waiting') return o;
+    const ahead = await Reservation.countDocuments({ book: o.book._id || o.book, status: 'waiting', createdAt: { $lt: o.createdAt } });
+    return { ...o, position: ahead + 1 };
+  };
+  api.post('/reservations', auth, wrap(async (req, res) => {
+    const bookId = str(req.body.bookId);
+    if (!validId(bookId)) return bad(res, 'Book not found', 404);
+    let member = req.user;
+    if (isStaff(req.user)) {
+      const mid = str(req.body.memberId);
+      if (!validId(mid)) return bad(res, 'Choose a member');
+      member = await User.findOne({ _id: mid, role: { $in: ['student', 'faculty'] }, active: true });
+      if (!member) return bad(res, 'Member not found', 404);
+    }
+    if (!cfg.POLICY[member.role]) return bad(res, 'Staff accounts cannot reserve books');
+    const book = await Book.findById(bookId);
+    if (!book) return bad(res, 'Book not found', 404);
+    if (await Loan.exists({ book: bookId, member: member._id, returnedAt: null })) return bad(res, 'You already have this book', 409);
+    if (await Reservation.exists({ book: bookId, member: member._id, status: 'waiting' })) return bad(res, 'Already in the queue for this book', 409);
+    const waiting = await Reservation.countDocuments({ book: bookId, status: 'waiting' });
+    if (book.availableCopies - waiting >= 1) return bad(res, 'A copy is available now, borrow it instead', 409);
+    const r = await Reservation.create({ book: bookId, member: member._id });
+    res.status(201).json(await queueInfo(r));
+  }));
+  api.get('/reservations/mine', auth, wrap(async (req, res) => {
+    const list = await Reservation.find({ member: req.user._id }).populate('book', 'title author availableCopies').sort({ createdAt: -1 }).limit(50);
+    res.json(await Promise.all(list.map(queueInfo)));
+  }));
+  api.get('/reservations', auth, staff, wrap(async (req, res) => {
+    const list = await Reservation.find({ status: 'waiting' }).populate('book', 'title author availableCopies').populate('member', 'name memberId').sort({ createdAt: 1 }).limit(200);
+    res.json(await Promise.all(list.map(queueInfo)));
+  }));
+  api.delete('/reservations/:id', auth, wrap(async (req, res) => {
+    if (!validId(req.params.id)) return bad(res, 'Reservation not found', 404);
+    const r = await Reservation.findById(req.params.id);
+    if (!r) return bad(res, 'Reservation not found', 404);
+    if (!isStaff(req.user) && String(r.member) !== String(req.user._id)) return bad(res, 'Not your reservation', 403);
+    if (r.status !== 'waiting') return bad(res, 'Reservation is no longer active', 409);
+    r.status = 'cancelled';
+    await r.save();
+    res.json({ ok: true });
+  }));
+
   // ---- Members (admin)
   api.get('/members', auth, staff, wrap(async (req, res) => {
     const members = await User.find({ role: { $in: ['student', 'faculty'] } }).sort({ name: 1 });
@@ -252,7 +314,7 @@ function createApp({ jwtSecret, clientDir } = {}) {
 
   api.get('/stats', auth, staff, wrap(async (req, res) => {
     const now = new Date();
-    const [titles, copies, members, activeLoans, overdue, perCat, recent] = await Promise.all([
+    const [titles, copies, members, activeLoans, overdue, perCat, recent, reservations] = await Promise.all([
       Book.countDocuments(),
       Book.aggregate([{ $group: { _id: null, total: { $sum: '$totalCopies' }, avail: { $sum: '$availableCopies' } } }]),
       User.countDocuments({ role: { $in: ['student', 'faculty'] }, active: true }),
@@ -260,9 +322,10 @@ function createApp({ jwtSecret, clientDir } = {}) {
       Loan.countDocuments({ returnedAt: null, dueAt: { $lt: now } }),
       Book.aggregate([{ $group: { _id: '$category', titles: { $sum: 1 }, copies: { $sum: '$totalCopies' } } }, { $sort: { copies: -1 } }]),
       Loan.find().populate('book', 'title').populate('member', 'name').sort({ createdAt: -1 }).limit(6),
+      Reservation.countDocuments({ status: 'waiting' }),
     ]);
     res.json({
-      titles, copies: copies[0]?.total || 0, available: copies[0]?.avail || 0, members, activeLoans, overdue,
+      titles, reservations, copies: copies[0]?.total || 0, available: copies[0]?.avail || 0, members, activeLoans, overdue,
       categories: perCat.map((c) => ({ category: c._id, titles: c.titles, copies: c.copies })),
       recent: recent.map(loanView),
     });

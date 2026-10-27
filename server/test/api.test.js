@@ -90,3 +90,38 @@ test('register creates a student; staff can issue to a member', async () => {
   assert.equal(iss.status, 201);
   assert.equal((await call('POST', '/loans', { bookId: book._id }, lib)).status, 400); // no member chosen
 });
+test('reservation queue: reserve when out, hold copies, FIFO position, cancel', async () => {
+  const adm = await login('admin@shelfwise.demo', 'StaffPass#1');
+  const b = (await call('POST', '/books', { title: 'Queue Book', author: 'Q', category: 'Test', totalCopies: 1 }, adm)).body;
+  const meera = await login('kabir@shelfwise.demo', 'MemberPass#1');
+  const kab = await login('faculty@shelfwise.demo', 'MemberPass#1');
+  const rohan = await login('meera@shelfwise.demo', 'MemberPass#1');
+  assert.equal((await call('POST', '/loans', { bookId: b._id }, kab)).status, 201);
+  // copy is out -> borrowing fails with a reserve hint, reserving works
+  const nope = await call('POST', '/loans', { bookId: b._id }, rohan);
+  assert.equal(nope.status, 409);
+  const r1 = await call('POST', '/reservations', { bookId: b._id }, rohan);
+  assert.equal(r1.status, 201);
+  assert.equal(r1.body.position, 1);
+  assert.equal((await call('POST', '/reservations', { bookId: b._id }, rohan)).status, 409); // duplicate
+  assert.equal((await call('POST', '/reservations', { bookId: b._id }, kab)).status, 409); // already has it
+  const mine = await call('GET', '/reservations/mine', null, rohan);
+  assert.equal(mine.body.filter((r) => r.status === 'waiting').length >= 1, true);
+  // return the copy: it is held for the queue, so a non-queued member cannot take it
+  const loans = (await call('GET', '/loans/mine', null, kab)).body;
+  const loan = loans.find((l) => l.book && l.book.title === 'Queue Book');
+  assert.equal((await call('POST', `/loans/${loan._id}/return`, null, kab)).status, 200);
+  const other = await login('saanvi@shelfwise.demo', 'MemberPass#1');
+  assert.equal((await call('POST', '/loans', { bookId: b._id }, other)).status, 409);
+  // the queued member can borrow it, which fulfils the reservation
+  assert.equal((await call('POST', '/loans', { bookId: b._id }, rohan)).status, 201);
+  const after = (await call('GET', '/reservations/mine', null, rohan)).body.filter((r) => String(r.book._id) === b._id);
+  assert.equal(after[0].status, 'fulfilled');
+  // staff list + cancel + permissions
+  const r2 = await call('POST', '/reservations', { bookId: b._id }, meera);
+  assert.equal(r2.status, 201);
+  assert.equal((await call('GET', '/reservations', null, meera)).status, 403);
+  assert.equal((await call('GET', '/reservations', null, adm)).status, 200);
+  assert.equal((await call('DELETE', '/reservations/' + r2.body._id, null, rohan)).status, 403);
+  assert.equal((await call('DELETE', '/reservations/' + r2.body._id, null, meera)).status, 200);
+});

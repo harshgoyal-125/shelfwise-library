@@ -12,7 +12,7 @@ export default function Dashboard() {
     <>
       <h2>Dashboard</h2>
       <div className="stats">
-        {[['Titles', s.titles], ['Copies', s.copies], ['Available', s.available], ['Members', s.members], ['On loan', s.activeLoans], ['Overdue', s.overdue]].map(([l, v]) => (
+        {[['Titles', s.titles], ['Copies', s.copies], ['Available', s.available], ['Members', s.members], ['On loan', s.activeLoans], ['Overdue', s.overdue], ['Reservations', s.reservations]].map(([l, v]) => (
           <div className={'stat card' + (l === 'Overdue' && v > 0 ? ' alert' : '')} key={l}><b>{v}</b><span>{l}</span></div>
         ))}
       </div>

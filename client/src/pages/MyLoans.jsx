@@ -4,15 +4,25 @@ import { api, fmtDate } from '../api.js';
 
 export default function MyLoans() {
   const [loans, setLoans] = useState(null);
+  const [resv, setResv] = useState([]);
   const [msg, setMsg] = useState(null);
-  const load = () => api('/loans/mine').then(setLoans).catch((e) => setMsg({ err: e.message }));
+  const load = () => {
+    api('/loans/mine').then(setLoans).catch((e) => setMsg({ err: e.message }));
+    api('/reservations/mine').then(setResv).catch(() => {});
+  };
   useEffect(() => { load(); }, []);
   async function act(id, what) {
     setMsg(null);
     try { await api(`/loans/${id}/${what}`, { method: 'POST' }); setMsg({ ok: what === 'renew' ? 'Renewed.' : 'Book returned. Thank you!' }); load(); }
     catch (e) { setMsg({ err: e.message }); }
   }
+  async function cancel(id) {
+    setMsg(null);
+    try { await api('/reservations/' + id, { method: 'DELETE' }); setMsg({ ok: 'Reservation cancelled.' }); load(); }
+    catch (e) { setMsg({ err: e.message }); }
+  }
   if (!loans) return <p className="muted">Loading…</p>;
+  const waiting = resv.filter((r) => r.status === 'waiting');
   const active = loans.filter((l) => !l.returnedAt);
   const past = loans.filter((l) => l.returnedAt);
   const fines = loans.reduce((s, l) => s + (l.fine || 0), 0);
@@ -39,6 +49,20 @@ export default function MyLoans() {
                 <button className="btn small" disabled={l.overdue || l.renewals >= 1} onClick={() => act(l._id, 'renew')}>Renew</button>
                 <button className="btn small primary" onClick={() => act(l._id, 'return')}>Return</button>
               </div>
+            </div>
+          ))}
+        </div>
+      )}
+      <h3>Reservations</h3>
+      {waiting.length === 0 ? <p className="muted">No active reservations. When every copy of a book is out, you can reserve it from the catalog.</p> : (
+        <div className="list">
+          {waiting.map((r) => (
+            <div className="item card" key={r._id}>
+              <div className="grow">
+                <b>{r.book?.title}</b>
+                <div className="small-text muted">Queue position {r.position}{r.book?.availableCopies > 0 && r.position === 1 ? ' · a copy is ready, borrow it from the catalog' : ''}</div>
+              </div>
+              <button className="btn small" onClick={() => cancel(r._id)}>Cancel</button>
             </div>
           ))}
         </div>

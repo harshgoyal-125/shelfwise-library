@@ -39,6 +39,16 @@ export default function Catalog({ user }) {
   };
   useEffect(() => { load(); /* eslint-disable-next-line */ }, [debounced, category, available, page]);
 
+  async function reserve(book) {
+    setMsg(null);
+    if (staff && !memberId) { setMsg({ err: 'Choose a member to reserve this book for' }); return; }
+    try {
+      const r = await api('/reservations', { method: 'POST', body: { bookId: book._id, memberId: staff ? memberId : undefined } });
+      setMsg({ ok: `Reserved "${book.title}". Queue position: ${r.position}.` });
+      load();
+    } catch (e) { setMsg({ err: e.message }); }
+  }
+
   async function borrow(book) {
     setMsg(null);
     if (staff && !memberId) { setMsg({ err: 'Choose a member to issue this book to' }); return; }
@@ -79,13 +89,17 @@ export default function Catalog({ user }) {
                 <h3>{b.title}</h3>
                 <div className="muted">{b.author}{b.year ? ` · ${b.year}` : ''}</div>
                 <div className="row between">
-                  <span className={'badge ' + (b.availableCopies > 0 ? 'ok' : 'warn')}>{b.availableCopies > 0 ? `${b.availableCopies} of ${b.totalCopies} available` : 'All copies out'}</span>
+                  <span className={'badge ' + (b.availableCopies > 0 ? 'ok' : 'warn')}>{b.availableCopies > 0 ? `${b.availableCopies} of ${b.totalCopies} available` : `All copies out${b.waiting ? ` · ${b.waiting} waiting` : ''}`}</span>
                   <span className="muted small-text">Shelf {b.shelf || '-'}</span>
                 </div>
                 {open === b._id && <p className="desc">{b.description || 'No description.'}<br /><span className="muted small-text">ISBN {b.isbn || '-'}</span></p>}
                 <div className="row gap">
                   <button className="btn small ghost" onClick={() => setOpen(open === b._id ? null : b._id)}>{open === b._id ? 'Less' : 'Details'}</button>
-                  <button className="btn small primary" disabled={b.availableCopies < 1} onClick={() => borrow(b)}>{staff ? 'Issue' : 'Borrow'}</button>
+                  {b.availableCopies - b.waiting < 1 && !(b.reservedByMe && b.availableCopies > 0) ? (
+                    <button className="btn small primary" disabled={b.reservedByMe} onClick={() => reserve(b)}>{b.reservedByMe ? 'Reserved' : 'Reserve'}</button>
+                  ) : (
+                    <button className="btn small primary" onClick={() => borrow(b)}>{staff ? 'Issue' : 'Borrow'}</button>
+                  )}
                 </div>
               </div>
             </article>

@@ -1,5 +1,5 @@
 const bcrypt = require('bcryptjs');
-const { User, Book, Loan } = require('./models');
+const { User, Book, Loan, Reservation } = require('./models');
 const { POLICY } = require('./config');
 
 const BOOKS = [
@@ -50,7 +50,7 @@ async function seed({ adminPassword, librarianPassword, facultyPassword, student
   librarianPassword = librarianPassword || adminPassword;
   facultyPassword = facultyPassword || memberPassword;
   studentPassword = studentPassword || memberPassword;
-  if (reset) await Promise.all([User.deleteMany({}), Book.deleteMany({}), Loan.deleteMany({})]);
+  if (reset) await Promise.all([User.deleteMany({}), Book.deleteMany({}), Loan.deleteMany({}), Reservation.deleteMany({})]);
   if (await User.countDocuments()) return false;
   const adminHash = await bcrypt.hash(adminPassword, 10);
   const hashes = { librarian: await bcrypt.hash(librarianPassword, 10), faculty: await bcrypt.hash(facultyPassword, 10), student: await bcrypt.hash(studentPassword, 10) };
@@ -70,7 +70,7 @@ async function seed({ adminPassword, librarianPassword, facultyPassword, student
   // sample loans: [memberIdx, bookIdx, daysAgoIssued, returnedDaysAgo|null]
   const loans = [
     [0, 0, 3, null], [0, 6, 20, null], [1, 13, 5, null], [1, 24, 18, null],
-    [2, 20, 8, null], [3, 3, 2, null], [4, 18, 22, null], [5, 14, 1, null],
+    [2, 20, 8, null], [3, 3, 2, null], [2, 3, 4, null], [4, 18, 22, null], [5, 14, 1, null],
     [0, 1, 40, 28], [1, 9, 35, 25], [2, 26, 50, 38], [3, 10, 45, 33], [5, 15, 60, 49],
   ];
   for (const [m, b, ago, ret] of loans) {
@@ -82,6 +82,9 @@ async function seed({ adminPassword, librarianPassword, facultyPassword, student
     await Loan.create(loan);
   }
   await Promise.all(books.map((b) => b.save()));
+  // reservation queue on a title with no copies left (Designing Data-Intensive Applications)
+  await Reservation.create({ book: books[3]._id, member: members[0]._id, createdAt: new Date(Date.now() - 2 * day) });
+  await Reservation.create({ book: books[3]._id, member: members[4]._id, createdAt: new Date(Date.now() - 1 * day) });
   return true;
 }
 
