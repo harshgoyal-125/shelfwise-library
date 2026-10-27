@@ -55,10 +55,10 @@ Environment variables (`server/.env`):
 
 - `MONGODB_URI` - MongoDB connection string
 - `JWT_SECRET` - long random string
-- `SEED_ADMIN_PASSWORD`, `SEED_MEMBER_PASSWORD` - passwords used for the demo accounts when the database is empty
+- `SEED_ADMIN_PASSWORD`, `SEED_LIBRARIAN_PASSWORD`, `SEED_FACULTY_PASSWORD`, `SEED_STUDENT_PASSWORD` - passwords for the demo accounts of each role (all four required to seed an empty database)
 - `SEED_RESET=true` - optional, wipes and re-seeds on start
 
-Demo accounts (emails; the passwords are the ones you set above): `admin@shelfwise.demo`, `librarian@shelfwise.demo`, `faculty@shelfwise.demo`, `student@shelfwise.demo`.
+Demo accounts (emails; each role uses the password you set above; faculty@ and student@ are the main ones, other sample members share their role's password): `admin@shelfwise.demo`, `librarian@shelfwise.demo`, `faculty@shelfwise.demo`, `student@shelfwise.demo`.
 
 For frontend development run `npm run dev:server` and `npm run dev:client` in two terminals (Vite proxies `/api`).
 

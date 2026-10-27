@@ -46,17 +46,20 @@ const MEMBERS = [
 
 const day = 24 * 3600 * 1000;
 
-async function seed({ adminPassword, memberPassword, reset = false }) {
+async function seed({ adminPassword, librarianPassword, facultyPassword, studentPassword, memberPassword, reset = false }) {
+  librarianPassword = librarianPassword || adminPassword;
+  facultyPassword = facultyPassword || memberPassword;
+  studentPassword = studentPassword || memberPassword;
   if (reset) await Promise.all([User.deleteMany({}), Book.deleteMany({}), Loan.deleteMany({})]);
   if (await User.countDocuments()) return false;
   const adminHash = await bcrypt.hash(adminPassword, 10);
-  const memberHash = await bcrypt.hash(memberPassword, 10);
+  const hashes = { librarian: await bcrypt.hash(librarianPassword, 10), faculty: await bcrypt.hash(facultyPassword, 10), student: await bcrypt.hash(studentPassword, 10) };
   await User.create({ name: 'Library Admin', email: 'admin@shelfwise.demo', passwordHash: adminHash, role: 'admin' });
-  await User.create({ name: 'Neha Verma (Librarian)', email: 'librarian@shelfwise.demo', passwordHash: adminHash, role: 'librarian' });
+  await User.create({ name: 'Neha Verma (Librarian)', email: 'librarian@shelfwise.demo', passwordHash: hashes.librarian, role: 'librarian' });
   const members = [];
   for (let i = 0; i < MEMBERS.length; i++) {
     members.push(await User.create({
-      name: MEMBERS[i][0], email: MEMBERS[i][1], passwordHash: memberHash, role: MEMBERS[i][2],
+      name: MEMBERS[i][0], email: MEMBERS[i][1], passwordHash: hashes[MEMBERS[i][2]], role: MEMBERS[i][2],
       memberId: 'LIB-' + String(1001 + i), phone: '98765' + String(43210 + i),
     }));
   }
@@ -91,7 +94,9 @@ if (require.main === module) {
     await mongoose.connect(process.env.MONGODB_URI);
     const done = await seed({
       adminPassword: process.env.SEED_ADMIN_PASSWORD,
-      memberPassword: process.env.SEED_MEMBER_PASSWORD,
+      librarianPassword: process.env.SEED_LIBRARIAN_PASSWORD,
+      facultyPassword: process.env.SEED_FACULTY_PASSWORD,
+      studentPassword: process.env.SEED_STUDENT_PASSWORD,
       reset: process.argv.includes('--reset'),
     });
     console.log(done ? 'seeded' : 'already has data');

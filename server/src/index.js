@@ -9,10 +9,10 @@ if (missing.length) { console.error('Missing env: ' + missing.join(', ')); proce
 
 (async () => {
   await mongoose.connect(process.env.MONGODB_URI, { serverSelectionTimeoutMS: 15000 });
-  if (process.env.SEED_ADMIN_PASSWORD && process.env.SEED_MEMBER_PASSWORD) {
+  const sp = ['ADMIN', 'LIBRARIAN', 'FACULTY', 'STUDENT'].map((r) => process.env['SEED_' + r + '_PASSWORD']);
+  if (sp.every(Boolean)) {
     const did = await seed({
-      adminPassword: process.env.SEED_ADMIN_PASSWORD,
-      memberPassword: process.env.SEED_MEMBER_PASSWORD,
+      adminPassword: sp[0], librarianPassword: sp[1], facultyPassword: sp[2], studentPassword: sp[3],
       reset: process.env.SEED_RESET === 'true',
     });
     if (did) console.log('Seeded demo data');
