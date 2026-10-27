@@ -15,10 +15,15 @@ createApp().listen(port, '0.0.0.0', () => console.log('ShelfWise listening on ' 
   console.log('MongoDB connected');
   const pw = ['ADMIN', 'LIBRARIAN', 'FACULTY', 'STUDENT'].map((r) => process.env['SEED_' + r + '_PASSWORD']);
   if (pw.every(Boolean)) {
+    // Setting SEED_VERSION to a new value re-seeds the demo data once (not on every restart).
+    const meta = mongoose.connection.collection('meta');
+    const want = process.env.SEED_VERSION || '';
+    const have = (await meta.findOne({ _id: 'seedVersion' }))?.value || '';
+    const reset = process.env.SEED_RESET === 'true' || (want !== '' && want !== have);
     const did = await seed({
-      adminPassword: pw[0], librarianPassword: pw[1], facultyPassword: pw[2], studentPassword: pw[3],
-      reset: process.env.SEED_RESET === 'true',
+      adminPassword: pw[0], librarianPassword: pw[1], facultyPassword: pw[2], studentPassword: pw[3], reset,
     });
+    if (want) await meta.updateOne({ _id: 'seedVersion' }, { $set: { value: want } }, { upsert: true });
     console.log(did ? 'Seeded demo data' : 'Database already has data');
   }
 })().catch((e) => { console.error('Startup failed:', e.message); process.exit(1); });
